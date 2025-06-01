@@ -1,0 +1,11 @@
+[
+  "tests/test_scraper.py::test_clean_price",
+  "tests/test_scraper.py::test_fetch_page_failure",
+  "tests/test_scraper.py::test_fetch_page_retry",
+  "tests/test_scraper.py::test_fetch_page_success",
+  "tests/test_scraper.py::test_get_product_details",
+  "tests/test_scraper.py::test_get_product_details_error",
+  "tests/test_scraper.py::test_parse_products",
+  "tests/test_scraper.py::test_parse_products_empty",
+  "tests/test_scraper.py::test_save_to_csv"
+]
