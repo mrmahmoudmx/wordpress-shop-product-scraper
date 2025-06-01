@@ -93,6 +93,28 @@ This will:
 - Some custom WordPress themes might require selector adjustments
 - Rate limiting might be necessary for large shops
 
+## Testing
+
+The project includes a comprehensive test suite that verifies:
+- Successful page fetching and retries
+- Product parsing and data extraction
+- Price cleaning and formatting
+- CSV export functionality
+- Error handling scenarios
+
+To run the tests:
+
+```bash
+# Run all tests
+pytest
+
+# Run tests with coverage report
+pytest --cov=scraper tests/
+
+# Run tests verbosely
+pytest -v
+```
+
 ## Troubleshooting
 
 If you encounter issues:
