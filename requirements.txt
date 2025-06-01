@@ -1,3 +1,7 @@
 requests>=2.25.0
 beautifulsoup4>=4.9.0
 lxml>=4.6.0  # For better HTML parsing performance
+pandas>=1.3.0  # For CSV handling
+pytest>=7.0.0  # For testing
+responses>=0.23.0  # For mocking HTTP requests in tests
+pytest-cov>=4.1.0  # For test coverage reporting
