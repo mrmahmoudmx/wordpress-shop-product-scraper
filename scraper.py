@@ -45,23 +45,43 @@ def get_product_details(product_url):
         
         # Get product description
         description = ""
-        desc_div = soup.find('div', class_='woocommerce-product-details__short-description')
+        desc_div = soup.find('div', class_='rh-post-wrapper') or \
+                  soup.find('div', class_='woocommerce-product-details__short-description') or \
+                  soup.find('div', class_='post-inner')
+        
         if desc_div:
-            description = desc_div.get_text(strip=True)
-        else:
-            # Try alternative description location
-            desc_div = soup.find('div', class_='description')
-            if desc_div:
-                description = desc_div.get_text(strip=True)
+            # Remove any script tags
+            for script in desc_div.find_all('script'):
+                script.decompose()
+            description = ' '.join(desc_div.stripped_strings)
         
         # Get product categories
         categories = []
-        category_links = soup.select('.posted_in a')
-        if category_links:
-            categories = [cat.get_text(strip=True) for cat in category_links]
+        
+        # Try to find categories in various locations
+        category_containers = [
+            soup.find('div', class_='rh-breadcrumbs'),  # Breadcrumbs
+            soup.find('div', class_='woocommerce-breadcrumb'),  # WooCommerce breadcrumb
+            soup.find('nav', class_='woocommerce-breadcrumb'),  # Alternative breadcrumb
+            soup.find('div', class_='product-categories'),  # Product categories
+            soup.find('div', class_='posted_in')  # Posted in categories
+        ]
+        
+        for container in category_containers:
+            if container:
+                # Try different selectors for category links
+                category_links = container.select('a[href*="product-category"], a[href*="category"], span[property="name"]')
+                if category_links:
+                    for link in category_links:
+                        category_text = link.get_text(strip=True)
+                        # Skip common non-category texts
+                        if category_text.lower() not in ['home', 'shop', 'products']:
+                            categories.append(category_text)
+                    if categories:  # If we found categories, break the loop
+                        break
         
         return {
-            'description': description,
+            'description': description[:500] if description else 'N/A',  # Limit description length
             'categories': ', '.join(categories) if categories else 'N/A'
         }
     except Exception as e:
@@ -91,22 +111,38 @@ def parse_products(html, base_url):
             product_url = 'N/A'
             
             # Get product name and URL
-            name_element = product.find('h2', class_='woocommerce-loop-product__title') or \
-                          product.find('h2', class_='product-title')
-            if name_element:
-                name = name_element.get_text(strip=True)
-                
-            # Get product URL
-            url_element = product.find('a', class_='woocommerce-LoopProduct-link') or \
-                         product.find('a', class_='product-link')
-            if url_element:
-                product_url = urljoin(base_url, url_element.get('href', ''))
+            product_link = None
             
-            # Get price
-            price_element = product.find('span', class_='price') or \
+            # Try to find the product link in various locations
+            for link in product.find_all('a'):
+                href = link.get('href', '')
+                if href and 'add-to-cart' not in href and '?add-to-cart=' not in href:
+                    product_link = link
+                    product_url = urljoin(base_url, href)
+                    break
+            
+            if product_link:
+                # Try to get name from link text or img alt
+                name = product_link.get_text(strip=True)
+                if not name or name == 'Add to cart':
+                    img = product_link.find('img')
+                    if img:
+                        name = img.get('alt', '').strip()
+            
+            # Clean up the name
+            if not name or name == 'Add to cart':
+                name = 'N/A'
+            # Get price - specifically looking for the current price
+            price_element = product.find('span', class_='rh_regular_price') or \
+                          product.find('span', class_='price') or \
                           product.find('span', class_='amount')
             if price_element:
-                price = price_element.get_text(strip=True)
+                # Clean up the price text to only show the current price
+                price_text = price_element.get_text(strip=True)
+                if 'Current price is:' in price_text:
+                    price = price_text.split('Current price is:')[1].strip()
+                else:
+                    price = price_text
             
             # Get image URL
             img_element = product.find('img')
@@ -135,18 +171,50 @@ def parse_products(html, base_url):
     
     return products
 
+def clean_price(price_text):
+    """Clean up price text by removing extra information and formatting"""
+    if not price_text or price_text == 'N/A':
+        return 'N/A'
+    
+    # Extract the current price if it exists
+    if 'Current price is:' in price_text:
+        price = price_text.split('Current price is:')[1].strip()
+    else:
+        price = price_text.strip()
+    
+    # Remove any "Original price was" text
+    if 'Original price was:' in price:
+        price = price.split('Original price was:')[0].strip()
+    
+    # Clean up any remaining periods or extra whitespace
+    price = price.rstrip('.')
+    return price
+
 def save_to_csv(products, output_file):
     """
-    Save product information to CSV file
+    Save product information to CSV file using pandas for proper formatting
     """
-    fieldnames = ['name', 'price', 'categories', 'description', 'image_url', 'product_url']
-    
     try:
-        with open(output_file, mode='w', newline='', encoding='utf-8') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-            for product in products:
-                writer.writerow(product)
+        import pandas as pd
+        
+        # Convert products list to DataFrame
+        df = pd.DataFrame(products)
+        
+        # Rename columns for better readability
+        df = df.rename(columns={
+            'name': 'Product Name',
+            'price': 'Product Price',
+            'categories': 'Product Categories',
+            'description': 'Product Description',
+            'image_url': 'Product Image URL',
+            'product_url': 'Product Page URL'
+        })
+        
+        # Clean up price data
+        df['Product Price'] = df['Product Price'].apply(clean_price)
+        
+        # Save to CSV with proper encoding and formatting
+        df.to_csv(output_file, index=False, encoding='utf-8')
         logging.info(f"Successfully saved {len(products)} products to {output_file}")
     except Exception as e:
         logging.error(f"Error saving to CSV: {e}")
